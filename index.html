@@ -4,16 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>EduPlay – Shape Builder</title>
+
+<!-- ✅ FIX 1: Real YouTube Playables SDK — MUST be first script tag -->
+<script src="https://www.youtube.com/playables/host-api/sdk.js"></script>
+
+<!-- ✅ FIX 2: Stub fallback for local dev only (skipped when real SDK loads) -->
 <script>
-/* YouTube Playables SDK Stub — real SDK injected by YouTube in production */
 (function(){
   if(window.ytgame)return;
   let _audio=true;
   const _cb={audio:[],pause:[],resume:[]};
   window.ytgame={
-    firstFrameReady:()=>console.log('[ytgame] firstFrameReady'),
-    gameReady:()=>console.log('[ytgame] gameReady'),
-    sendScore:(s)=>console.log('[ytgame] sendScore',s),
+    firstFrameReady:()=>console.log('[ytgame-stub] firstFrameReady'),
+    gameReady:()=>console.log('[ytgame-stub] gameReady'),
+    sendScore:(s)=>console.log('[ytgame-stub] sendScore',s),
     saveData:(d)=>{try{localStorage.setItem('ytg_v4',JSON.stringify(d));}catch(e){}return Promise.resolve({success:true});},
     loadData:()=>{let d={};try{const r=localStorage.getItem('ytg_v4');if(r)d=JSON.parse(r);}catch(e){}return Promise.resolve(d);},
     isAudioEnabled:()=>_audio,
@@ -317,7 +321,7 @@ const PRAISE=['Great!','Awesome!','Perfect!','Amazing!','Brilliant!','Superb!','
 const COMBO_MSG=['COMBO x2! 🔥','COMBO x3! 💥','COMBO x4! ⚡','COMBO x5! 🌟','UNSTOPPABLE! 🏆'];
 
 /* ═══════════════════════════════════════════════════════════
-   30 LEVELS — baseTimer = Easy seconds (0 = no timer ever)
+   30 LEVELS
 ═══════════════════════════════════════════════════════════ */
 const LVS=[
  /* 1  EASY */ {n:'Sun',      e:'☀️', t:0,  s:[{sh:'circle',x:.5,y:.5,w:.55,h:.55}],                                    tr:['circle','square']},
@@ -360,7 +364,7 @@ let G={
   lives:5,wrongCount:0,timerVal:0,timerInt:null,
   placements:[],paused:false,audioOn:true,
   dataLoaded:false,bestScore:0,
-  combo:0, // consecutive correct placements
+  combo:0,
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -446,7 +450,8 @@ function drawTile(cv,sh,col){
 }
 
 /* ═══════════════════════════════════════════════════════════
-   YouTube Playables SDK HOOKS
+   ✅ FIX 3: firstFrameReady called immediately — SDK is now
+   guaranteed loaded above, so this call is safe.
 ═══════════════════════════════════════════════════════════ */
 window.ytgame.firstFrameReady();
 
@@ -479,7 +484,7 @@ async function saveCloud(){
 }
 
 /* ═══════════════════════════════════════════════════════════
-   BOOT
+   BOOT — gameReady() called after loading completes
 ═══════════════════════════════════════════════════════════ */
 async function boot(){
   const bar=$('lbf'),tip=$('ltip');
@@ -490,7 +495,7 @@ async function boot(){
   bar.style.width='100%';tip.textContent='Ready!';
   await new Promise(r=>setTimeout(r,150));
   showScreen('SS');
-  window.ytgame.gameReady(); // MUST call only when game is ready for interaction
+  window.ytgame.gameReady(); // ✅ Called AFTER firstFrameReady — correct order
 }
 boot();
 
@@ -515,7 +520,7 @@ function buildGrid(){
 }
 
 /* ═══════════════════════════════════════════════════════════
-   RESIZE — preserve game state on resize (Playables §1.4)
+   RESIZE
 ═══════════════════════════════════════════════════════════ */
 function resizeCanvas(){
   const wrap=document.querySelector('.scene');if(!wrap)return;
@@ -594,7 +599,6 @@ function buildTray(lv,cfg){
   trayEl.innerHTML='';
   const needed={};lv.s.forEach(s=>needed[s.sh]=(needed[s.sh]||0)+1);
   const req=[...new Set(lv.tr)];
-  // Decoys: random shapes not in required list
   const pool=ALL_SH.filter(s=>!req.includes(s));
   const decoys=[];
   for(let i=0;i<cfg.decoys&&pool.length;i++)decoys.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);
@@ -685,7 +689,6 @@ function setupDrag(tile,sh){
 document.addEventListener('mousemove',e=>{if(dragSh)moveGhost(e.clientX,e.clientY);});
 document.addEventListener('touchmove',e=>{if(dragSh){e.preventDefault();moveGhost(e.touches[0].clientX,e.touches[0].clientY);}},{passive:false});
 
-// ESC key — do NOT call preventDefault on Esc (Playables §2.7)
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&dragSh){
     dragSh=null;if(dragTile)dragTile.classList.remove('drg');
@@ -713,7 +716,6 @@ function endDrag(e){
       hit.placed=true;G.combo++;
       const pts=10+Math.round((G.timerVal||0)*.5);
       G.score+=pts;sfxPlace();
-      // Combo system
       if(G.combo>=cfg.comboNeeded){
         const comboIdx=Math.min(G.combo-cfg.comboNeeded,COMBO_MSG.length-1);
         showCombo(COMBO_MSG[comboIdx]);sfxCombo();
