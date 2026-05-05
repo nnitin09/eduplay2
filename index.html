@@ -5,26 +5,34 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>EduPlay – Shape Builder</title>
 
-<!-- ✅ FIX 1: Real YouTube Playables SDK — MUST be first script tag -->
-<script src="https://www.youtube.com/playables/host-api/sdk.js"></script>
+<!-- ✅ CORRECT YouTube Playables SDK v1 — MUST be first script -->
+<script src="https://www.youtube.com/game_api/v1"></script>
 
-<!-- ✅ FIX 2: Stub fallback for local dev only (skipped when real SDK loads) -->
+<!-- Fallback stub for local/non-YouTube environments only -->
 <script>
 (function(){
-  if(window.ytgame)return;
-  let _audio=true;
-  const _cb={audio:[],pause:[],resume:[]};
+  if(window.ytgame)return; // real SDK loaded — skip
+  // Stub matching v1 API namespace exactly
   window.ytgame={
-    firstFrameReady:()=>console.log('[ytgame-stub] firstFrameReady'),
-    gameReady:()=>console.log('[ytgame-stub] gameReady'),
-    sendScore:(s)=>console.log('[ytgame-stub] sendScore',s),
-    saveData:(d)=>{try{localStorage.setItem('ytg_v4',JSON.stringify(d));}catch(e){}return Promise.resolve({success:true});},
-    loadData:()=>{let d={};try{const r=localStorage.getItem('ytg_v4');if(r)d=JSON.parse(r);}catch(e){}return Promise.resolve(d);},
-    isAudioEnabled:()=>_audio,
-    onAudioEnabledChange:(cb)=>_cb.audio.push(cb),
-    onPause:(cb)=>_cb.pause.push(cb),
-    onResume:(cb)=>_cb.resume.push(cb),
-    _fire:(ev,...a)=>(_cb[ev]||[]).forEach(fn=>fn(...a)),
+    IN_PLAYABLES_ENV:false,
+    SDK_VERSION:'stub',
+    game:{
+      firstFrameReady:()=>console.log('[stub] firstFrameReady'),
+      gameReady:()=>console.log('[stub] gameReady'),
+      saveData:(s)=>{try{localStorage.setItem('ytg_v1',s);}catch(e){}return Promise.resolve();},
+      loadData:()=>{let s='';try{s=localStorage.getItem('ytg_v1')||'';}catch(e){}return Promise.resolve(s);},
+    },
+    engagement:{
+      sendScore:(sc)=>{console.log('[stub] sendScore',sc.value);return Promise.resolve();},
+    },
+    system:{
+      isAudioEnabled:()=>true,
+      onAudioEnabledChange:(cb)=>()=>{},
+      onPause:(cb)=>()=>{},
+      onResume:(cb)=>()=>{},
+      getLanguage:()=>Promise.resolve('en-US'),
+    },
+    health:{logError:()=>{},logWarning:()=>{}},
   };
 })();
 </script>
@@ -167,7 +175,6 @@ html,body{width:100%;height:100%;overflow:hidden;touch-action:none;user-select:n
   pointer-events:none;z-index:500;opacity:0;transition:opacity .2s;
   font-size:1.4rem;font-weight:900;color:#fff;
   text-shadow:0 2px 8px rgba(0,0,0,.3);white-space:nowrap;}
-#combo.show{opacity:1;}
 
 /* TOAST */
 #toast{position:fixed;top:66px;left:50%;transform:translateX(-50%) translateY(-14px);
@@ -296,9 +303,6 @@ html,body{width:100%;height:100%;overflow:hidden;touch-action:none;user-select:n
 'use strict';
 (function(){
 
-/* ═══════════════════════════════════════════════════════════
-   DIFFICULTY CONFIG
-═══════════════════════════════════════════════════════════ */
 const DC={
   easy:  {lives:5,timerM:1.6,tolM:.60,decoys:0,noL:false,noC:false,pen:0,  tag:'EASY', cls:'de',comboNeeded:3},
   medium:{lives:3,timerM:1.0,tolM:.44,decoys:2,noL:false,noC:false,pen:4,  tag:'MED',  cls:'dm',comboNeeded:3},
@@ -306,9 +310,6 @@ const DC={
   expert:{lives:1,timerM:.40,tolM:.22,decoys:5,noL:true, noC:true, pen:12, tag:'XPERT',cls:'dx',comboNeeded:5},
 };
 
-/* ═══════════════════════════════════════════════════════════
-   SHAPE COLORS
-═══════════════════════════════════════════════════════════ */
 const CLR={
   circle:'#FF6B6B',square:'#4ECDC4',triangle:'#FFE66D',
   rectangle:'#A78BFA',semicircle:'#FCA549',diamond:'#6EE7B7',
@@ -316,60 +317,49 @@ const CLR={
 };
 const GRAY='#B0BEC5';
 const ALL_SH=Object.keys(CLR);
-
 const PRAISE=['Great!','Awesome!','Perfect!','Amazing!','Brilliant!','Superb!','Yes!','Wow!','On fire!','Flawless!'];
 const COMBO_MSG=['COMBO x2! 🔥','COMBO x3! 💥','COMBO x4! ⚡','COMBO x5! 🌟','UNSTOPPABLE! 🏆'];
 
-/* ═══════════════════════════════════════════════════════════
-   30 LEVELS
-═══════════════════════════════════════════════════════════ */
 const LVS=[
- /* 1  EASY */ {n:'Sun',      e:'☀️', t:0,  s:[{sh:'circle',x:.5,y:.5,w:.55,h:.55}],                                    tr:['circle','square']},
- /* 2  EASY */ {n:'House',    e:'🏠', t:0,  s:[{sh:'triangle',x:.5,y:.22,w:.56,h:.36,l:'Roof'},{sh:'square',x:.5,y:.64,w:.44,h:.44,l:'Walls'}], tr:['triangle','square']},
- /* 3  EASY */ {n:'Tree',     e:'🌳', t:0,  s:[{sh:'triangle',x:.5,y:.30,w:.54,h:.44},{sh:'rectangle',x:.5,y:.73,w:.17,h:.30}], tr:['triangle','rectangle']},
- /* 4  EASY */ {n:'Kite',     e:'🪁', t:0,  s:[{sh:'diamond',x:.5,y:.44,w:.54,h:.66}],                                   tr:['diamond','square','triangle']},
- /* 5  EASY */ {n:'Car',      e:'🚗', t:55, s:[{sh:'rectangle',x:.5,y:.51,w:.72,h:.32},{sh:'semicircle',x:.5,y:.29,w:.46,h:.27}], tr:['rectangle','semicircle','circle']},
- /* 6  MED  */ {n:'Snowman',  e:'⛄', t:46, s:[{sh:'circle',x:.5,y:.26,w:.36,h:.36},{sh:'circle',x:.5,y:.66,w:.52,h:.52}], tr:['circle','square','triangle']},
- /* 7  MED  */ {n:'Rocket',   e:'🚀', t:42, s:[{sh:'triangle',x:.5,y:.16,w:.34,h:.31},{sh:'rectangle',x:.5,y:.55,w:.28,h:.53}], tr:['triangle','rectangle','semicircle']},
- /* 8  MED  */ {n:'Flower',   e:'🌸', t:46, s:[{sh:'circle',x:.5,y:.38,w:.36,h:.36},{sh:'rectangle',x:.5,y:.76,w:.12,h:.35}], tr:['circle','rectangle','triangle','square']},
- /* 9  MED  */ {n:'Star',     e:'⭐', t:40, s:[{sh:'star',x:.5,y:.48,w:.65,h:.65}],                                      tr:['star','circle','diamond','hexagon']},
- /* 10 MED  */ {n:'Boat',     e:'⛵', t:42, s:[{sh:'triangle',x:.5,y:.28,w:.42,h:.40},{sh:'semicircle',x:.5,y:.69,w:.66,h:.34}], tr:['triangle','semicircle','square','diamond']},
- /* 11 MED  */ {n:'Robot',    e:'🤖', t:38, s:[{sh:'square',x:.5,y:.21,w:.34,h:.34,l:'Head'},{sh:'rectangle',x:.5,y:.58,w:.44,h:.44,l:'Body'},{sh:'circle',x:.32,y:.21,w:.11,h:.11},{sh:'circle',x:.68,y:.21,w:.11,h:.11}], tr:['square','rectangle','circle','triangle']},
- /* 12 MED  */ {n:'Fish',     e:'🐟', t:35, s:[{sh:'circle',x:.38,y:.48,w:.48,h:.48},{sh:'triangle',x:.83,y:.48,w:.26,h:.36}], tr:['circle','triangle','square','semicircle']},
- /* 13 MED  */ {n:'Crown',    e:'👑', t:36, s:[{sh:'rectangle',x:.5,y:.71,w:.66,h:.25},{sh:'triangle',x:.22,y:.38,w:.21,h:.30},{sh:'triangle',x:.5,y:.30,w:.21,h:.30},{sh:'triangle',x:.78,y:.38,w:.21,h:.30}], tr:['triangle','rectangle','diamond','star']},
- /* 14 MED  */ {n:'Bridge',   e:'🌉', t:36, s:[{sh:'semicircle',x:.5,y:.42,w:.68,h:.44},{sh:'rectangle',x:.5,y:.75,w:.74,h:.15}], tr:['semicircle','rectangle','square','triangle']},
- /* 15 MED  */ {n:'Lighthouse',e:'🗼',t:36, s:[{sh:'triangle',x:.5,y:.12,w:.30,h:.24},{sh:'semicircle',x:.5,y:.24,w:.30,h:.16},{sh:'rectangle',x:.5,y:.56,w:.22,h:.60}], tr:['triangle','semicircle','rectangle','square','hexagon']},
- /* 16 HARD */ {n:'Castle',   e:'🏰', t:32, s:[{sh:'rectangle',x:.5,y:.61,w:.70,h:.54},{sh:'square',x:.20,y:.26,w:.20,h:.32},{sh:'square',x:.80,y:.26,w:.20,h:.32},{sh:'triangle',x:.20,y:.10,w:.20,h:.21},{sh:'triangle',x:.80,y:.10,w:.20,h:.21}], tr:['rectangle','square','triangle','diamond','circle']},
- /* 17 HARD */ {n:'Hive',     e:'🐝', t:28, s:[{sh:'hexagon',x:.5,y:.50,w:.62,h:.62}],                                   tr:['hexagon','circle','diamond','square']},
- /* 18 HARD */ {n:'Barn',     e:'🏚️',t:32, s:[{sh:'triangle',x:.5,y:.19,w:.70,h:.34},{sh:'square',x:.5,y:.63,w:.56,h:.50},{sh:'rectangle',x:.5,y:.79,w:.18,h:.20}], tr:['triangle','square','rectangle','circle','semicircle']},
- /* 19 HARD */ {n:'Pizza',    e:'🍕', t:28, s:[{sh:'triangle',x:.5,y:.51,w:.72,h:.72},{sh:'circle',x:.40,y:.42,w:.12,h:.12},{sh:'circle',x:.61,y:.36,w:.10,h:.10}], tr:['triangle','circle','square','semicircle','diamond']},
- /* 20 HARD */ {n:'Spaceship',e:'🛸', t:28, s:[{sh:'semicircle',x:.5,y:.35,w:.66,h:.46},{sh:'rectangle',x:.5,y:.66,w:.66,h:.16},{sh:'triangle',x:.18,y:.77,w:.18,h:.24},{sh:'triangle',x:.82,y:.77,w:.18,h:.24}], tr:['semicircle','rectangle','triangle','circle','diamond']},
- /* 21 HARD */ {n:'Caterpillar',e:'🐛',t:26,s:[{sh:'circle',x:.17,y:.50,w:.28,h:.28},{sh:'circle',x:.37,y:.50,w:.28,h:.28},{sh:'circle',x:.57,y:.50,w:.28,h:.28},{sh:'circle',x:.77,y:.50,w:.24,h:.24},{sh:'semicircle',x:.82,y:.37,w:.14,h:.12}], tr:['circle','semicircle','square','triangle']},
- /* 22 HARD */ {n:'Butterfly',e:'🦋', t:26, s:[{sh:'circle',x:.27,y:.36,w:.36,h:.36},{sh:'circle',x:.73,y:.36,w:.36,h:.36},{sh:'rectangle',x:.5,y:.63,w:.08,h:.42},{sh:'semicircle',x:.27,y:.71,w:.24,h:.24},{sh:'semicircle',x:.73,y:.71,w:.24,h:.24}], tr:['circle','rectangle','semicircle','triangle','diamond','star']},
- /* 23 HARD */ {n:'Crystal',  e:'💎', t:24, s:[{sh:'diamond',x:.5,y:.36,w:.52,h:.52},{sh:'triangle',x:.5,y:.75,w:.30,h:.22},{sh:'hexagon',x:.5,y:.35,w:.18,h:.18}], tr:['diamond','triangle','hexagon','star','circle','oval']},
- /* 24 HARD */ {n:'Mega Castle',e:'🏯',t:32,s:[{sh:'rectangle',x:.5,y:.63,w:.80,h:.52},{sh:'square',x:.18,y:.28,w:.22,h:.32},{sh:'square',x:.82,y:.28,w:.22,h:.32},{sh:'triangle',x:.18,y:.10,w:.22,h:.22},{sh:'triangle',x:.82,y:.10,w:.22,h:.22},{sh:'triangle',x:.5,y:.10,w:.22,h:.22},{sh:'hexagon',x:.5,y:.37,w:.26,h:.30}], tr:['rectangle','square','triangle','hexagon','diamond','semicircle','circle']},
- /* 25 HARD */ {n:'Alien',    e:'👽', t:24, s:[{sh:'oval',x:.5,y:.38,w:.60,h:.56},{sh:'circle',x:.34,y:.34,w:.16,h:.16},{sh:'circle',x:.66,y:.34,w:.16,h:.16},{sh:'rectangle',x:.5,y:.62,w:.20,h:.08}], tr:['oval','circle','rectangle','diamond','star','triangle']},
- /* 26 XPERT*/ {n:'Snowflake',e:'❄️', t:24, s:[{sh:'rectangle',x:.5,y:.50,w:.72,h:.10},{sh:'rectangle',x:.5,y:.50,w:.10,h:.72},{sh:'diamond',x:.5,y:.50,w:.44,h:.44},{sh:'circle',x:.5,y:.50,w:.12,h:.12}], tr:['rectangle','diamond','circle','hexagon','star','triangle','semicircle']},
- /* 27 XPERT*/ {n:'Dragon',   e:'🐉', t:26, s:[{sh:'hexagon',x:.5,y:.30,w:.42,h:.38},{sh:'triangle',x:.5,y:.58,w:.30,h:.36},{sh:'circle',x:.32,y:.26,w:.12,h:.12},{sh:'circle',x:.68,y:.26,w:.12,h:.12},{sh:'triangle',x:.26,y:.50,w:.18,h:.16},{sh:'triangle',x:.74,y:.50,w:.18,h:.16}], tr:['hexagon','triangle','circle','diamond','rectangle','star','semicircle']},
- /* 28 XPERT*/ {n:'Station',  e:'🛰️',t:24, s:[{sh:'rectangle',x:.5,y:.50,w:.30,h:.16},{sh:'rectangle',x:.22,y:.50,w:.22,h:.08},{sh:'rectangle',x:.78,y:.50,w:.22,h:.08},{sh:'circle',x:.5,y:.50,w:.20,h:.20},{sh:'square',x:.5,y:.28,w:.16,h:.16},{sh:'square',x:.5,y:.72,w:.16,h:.16}], tr:['rectangle','circle','square','triangle','semicircle','diamond']},
- /* 29 XPERT*/ {n:'City',     e:'🌆', t:28, s:[{sh:'rectangle',x:.17,y:.61,w:.17,h:.52},{sh:'rectangle',x:.37,y:.56,w:.14,h:.62},{sh:'rectangle',x:.56,y:.66,w:.22,h:.42},{sh:'rectangle',x:.77,y:.59,w:.16,h:.56},{sh:'square',x:.17,y:.34,w:.17,h:.17},{sh:'triangle',x:.37,y:.24,w:.14,h:.18},{sh:'semicircle',x:.77,y:.30,w:.16,h:.16}], tr:['rectangle','square','triangle','semicircle','diamond','hexagon','circle','oval']},
- /* 30 XPERT*/ {n:'FINALE',   e:'🌟', t:28, s:[{sh:'star',x:.5,y:.32,w:.56,h:.56},{sh:'hexagon',x:.5,y:.32,w:.24,h:.24},{sh:'circle',x:.5,y:.74,w:.26,h:.26},{sh:'triangle',x:.22,y:.56,w:.20,h:.24},{sh:'triangle',x:.78,y:.56,w:.20,h:.24},{sh:'diamond',x:.5,y:.14,w:.16,h:.18},{sh:'oval',x:.5,y:.74,w:.22,h:.12}], tr:['star','hexagon','circle','triangle','diamond','oval','rectangle','square','semicircle']},
+ {n:'Sun',      e:'☀️', t:0,  s:[{sh:'circle',x:.5,y:.5,w:.55,h:.55}],                                    tr:['circle','square']},
+ {n:'House',    e:'🏠', t:0,  s:[{sh:'triangle',x:.5,y:.22,w:.56,h:.36,l:'Roof'},{sh:'square',x:.5,y:.64,w:.44,h:.44,l:'Walls'}], tr:['triangle','square']},
+ {n:'Tree',     e:'🌳', t:0,  s:[{sh:'triangle',x:.5,y:.30,w:.54,h:.44},{sh:'rectangle',x:.5,y:.73,w:.17,h:.30}], tr:['triangle','rectangle']},
+ {n:'Kite',     e:'🪁', t:0,  s:[{sh:'diamond',x:.5,y:.44,w:.54,h:.66}],                                   tr:['diamond','square','triangle']},
+ {n:'Car',      e:'🚗', t:55, s:[{sh:'rectangle',x:.5,y:.51,w:.72,h:.32},{sh:'semicircle',x:.5,y:.29,w:.46,h:.27}], tr:['rectangle','semicircle','circle']},
+ {n:'Snowman',  e:'⛄', t:46, s:[{sh:'circle',x:.5,y:.26,w:.36,h:.36},{sh:'circle',x:.5,y:.66,w:.52,h:.52}], tr:['circle','square','triangle']},
+ {n:'Rocket',   e:'🚀', t:42, s:[{sh:'triangle',x:.5,y:.16,w:.34,h:.31},{sh:'rectangle',x:.5,y:.55,w:.28,h:.53}], tr:['triangle','rectangle','semicircle']},
+ {n:'Flower',   e:'🌸', t:46, s:[{sh:'circle',x:.5,y:.38,w:.36,h:.36},{sh:'rectangle',x:.5,y:.76,w:.12,h:.35}], tr:['circle','rectangle','triangle','square']},
+ {n:'Star',     e:'⭐', t:40, s:[{sh:'star',x:.5,y:.48,w:.65,h:.65}],                                      tr:['star','circle','diamond','hexagon']},
+ {n:'Boat',     e:'⛵', t:42, s:[{sh:'triangle',x:.5,y:.28,w:.42,h:.40},{sh:'semicircle',x:.5,y:.69,w:.66,h:.34}], tr:['triangle','semicircle','square','diamond']},
+ {n:'Robot',    e:'🤖', t:38, s:[{sh:'square',x:.5,y:.21,w:.34,h:.34,l:'Head'},{sh:'rectangle',x:.5,y:.58,w:.44,h:.44,l:'Body'},{sh:'circle',x:.32,y:.21,w:.11,h:.11},{sh:'circle',x:.68,y:.21,w:.11,h:.11}], tr:['square','rectangle','circle','triangle']},
+ {n:'Fish',     e:'🐟', t:35, s:[{sh:'circle',x:.38,y:.48,w:.48,h:.48},{sh:'triangle',x:.83,y:.48,w:.26,h:.36}], tr:['circle','triangle','square','semicircle']},
+ {n:'Crown',    e:'👑', t:36, s:[{sh:'rectangle',x:.5,y:.71,w:.66,h:.25},{sh:'triangle',x:.22,y:.38,w:.21,h:.30},{sh:'triangle',x:.5,y:.30,w:.21,h:.30},{sh:'triangle',x:.78,y:.38,w:.21,h:.30}], tr:['triangle','rectangle','diamond','star']},
+ {n:'Bridge',   e:'🌉', t:36, s:[{sh:'semicircle',x:.5,y:.42,w:.68,h:.44},{sh:'rectangle',x:.5,y:.75,w:.74,h:.15}], tr:['semicircle','rectangle','square','triangle']},
+ {n:'Lighthouse',e:'🗼',t:36, s:[{sh:'triangle',x:.5,y:.12,w:.30,h:.24},{sh:'semicircle',x:.5,y:.24,w:.30,h:.16},{sh:'rectangle',x:.5,y:.56,w:.22,h:.60}], tr:['triangle','semicircle','rectangle','square','hexagon']},
+ {n:'Castle',   e:'🏰', t:32, s:[{sh:'rectangle',x:.5,y:.61,w:.70,h:.54},{sh:'square',x:.20,y:.26,w:.20,h:.32},{sh:'square',x:.80,y:.26,w:.20,h:.32},{sh:'triangle',x:.20,y:.10,w:.20,h:.21},{sh:'triangle',x:.80,y:.10,w:.20,h:.21}], tr:['rectangle','square','triangle','diamond','circle']},
+ {n:'Hive',     e:'🐝', t:28, s:[{sh:'hexagon',x:.5,y:.50,w:.62,h:.62}],                                   tr:['hexagon','circle','diamond','square']},
+ {n:'Barn',     e:'🏚️',t:32, s:[{sh:'triangle',x:.5,y:.19,w:.70,h:.34},{sh:'square',x:.5,y:.63,w:.56,h:.50},{sh:'rectangle',x:.5,y:.79,w:.18,h:.20}], tr:['triangle','square','rectangle','circle','semicircle']},
+ {n:'Pizza',    e:'🍕', t:28, s:[{sh:'triangle',x:.5,y:.51,w:.72,h:.72},{sh:'circle',x:.40,y:.42,w:.12,h:.12},{sh:'circle',x:.61,y:.36,w:.10,h:.10}], tr:['triangle','circle','square','semicircle','diamond']},
+ {n:'Spaceship',e:'🛸', t:28, s:[{sh:'semicircle',x:.5,y:.35,w:.66,h:.46},{sh:'rectangle',x:.5,y:.66,w:.66,h:.16},{sh:'triangle',x:.18,y:.77,w:.18,h:.24},{sh:'triangle',x:.82,y:.77,w:.18,h:.24}], tr:['semicircle','rectangle','triangle','circle','diamond']},
+ {n:'Caterpillar',e:'🐛',t:26,s:[{sh:'circle',x:.17,y:.50,w:.28,h:.28},{sh:'circle',x:.37,y:.50,w:.28,h:.28},{sh:'circle',x:.57,y:.50,w:.28,h:.28},{sh:'circle',x:.77,y:.50,w:.24,h:.24},{sh:'semicircle',x:.82,y:.37,w:.14,h:.12}], tr:['circle','semicircle','square','triangle']},
+ {n:'Butterfly',e:'🦋', t:26, s:[{sh:'circle',x:.27,y:.36,w:.36,h:.36},{sh:'circle',x:.73,y:.36,w:.36,h:.36},{sh:'rectangle',x:.5,y:.63,w:.08,h:.42},{sh:'semicircle',x:.27,y:.71,w:.24,h:.24},{sh:'semicircle',x:.73,y:.71,w:.24,h:.24}], tr:['circle','rectangle','semicircle','triangle','diamond','star']},
+ {n:'Crystal',  e:'💎', t:24, s:[{sh:'diamond',x:.5,y:.36,w:.52,h:.52},{sh:'triangle',x:.5,y:.75,w:.30,h:.22},{sh:'hexagon',x:.5,y:.35,w:.18,h:.18}], tr:['diamond','triangle','hexagon','star','circle','oval']},
+ {n:'Mega Castle',e:'🏯',t:32,s:[{sh:'rectangle',x:.5,y:.63,w:.80,h:.52},{sh:'square',x:.18,y:.28,w:.22,h:.32},{sh:'square',x:.82,y:.28,w:.22,h:.32},{sh:'triangle',x:.18,y:.10,w:.22,h:.22},{sh:'triangle',x:.82,y:.10,w:.22,h:.22},{sh:'triangle',x:.5,y:.10,w:.22,h:.22},{sh:'hexagon',x:.5,y:.37,w:.26,h:.30}], tr:['rectangle','square','triangle','hexagon','diamond','semicircle','circle']},
+ {n:'Alien',    e:'👽', t:24, s:[{sh:'oval',x:.5,y:.38,w:.60,h:.56},{sh:'circle',x:.34,y:.34,w:.16,h:.16},{sh:'circle',x:.66,y:.34,w:.16,h:.16},{sh:'rectangle',x:.5,y:.62,w:.20,h:.08}], tr:['oval','circle','rectangle','diamond','star','triangle']},
+ {n:'Snowflake',e:'❄️', t:24, s:[{sh:'rectangle',x:.5,y:.50,w:.72,h:.10},{sh:'rectangle',x:.5,y:.50,w:.10,h:.72},{sh:'diamond',x:.5,y:.50,w:.44,h:.44},{sh:'circle',x:.5,y:.50,w:.12,h:.12}], tr:['rectangle','diamond','circle','hexagon','star','triangle','semicircle']},
+ {n:'Dragon',   e:'🐉', t:26, s:[{sh:'hexagon',x:.5,y:.30,w:.42,h:.38},{sh:'triangle',x:.5,y:.58,w:.30,h:.36},{sh:'circle',x:.32,y:.26,w:.12,h:.12},{sh:'circle',x:.68,y:.26,w:.12,h:.12},{sh:'triangle',x:.26,y:.50,w:.18,h:.16},{sh:'triangle',x:.74,y:.50,w:.18,h:.16}], tr:['hexagon','triangle','circle','diamond','rectangle','star','semicircle']},
+ {n:'Station',  e:'🛰️',t:24, s:[{sh:'rectangle',x:.5,y:.50,w:.30,h:.16},{sh:'rectangle',x:.22,y:.50,w:.22,h:.08},{sh:'rectangle',x:.78,y:.50,w:.22,h:.08},{sh:'circle',x:.5,y:.50,w:.20,h:.20},{sh:'square',x:.5,y:.28,w:.16,h:.16},{sh:'square',x:.5,y:.72,w:.16,h:.16}], tr:['rectangle','circle','square','triangle','semicircle','diamond']},
+ {n:'City',     e:'🌆', t:28, s:[{sh:'rectangle',x:.17,y:.61,w:.17,h:.52},{sh:'rectangle',x:.37,y:.56,w:.14,h:.62},{sh:'rectangle',x:.56,y:.66,w:.22,h:.42},{sh:'rectangle',x:.77,y:.59,w:.16,h:.56},{sh:'square',x:.17,y:.34,w:.17,h:.17},{sh:'triangle',x:.37,y:.24,w:.14,h:.18},{sh:'semicircle',x:.77,y:.30,w:.16,h:.16}], tr:['rectangle','square','triangle','semicircle','diamond','hexagon','circle','oval']},
+ {n:'FINALE',   e:'🌟', t:28, s:[{sh:'star',x:.5,y:.32,w:.56,h:.56},{sh:'hexagon',x:.5,y:.32,w:.24,h:.24},{sh:'circle',x:.5,y:.74,w:.26,h:.26},{sh:'triangle',x:.22,y:.56,w:.20,h:.24},{sh:'triangle',x:.78,y:.56,w:.20,h:.24},{sh:'diamond',x:.5,y:.14,w:.16,h:.18},{sh:'oval',x:.5,y:.74,w:.22,h:.12}], tr:['star','hexagon','circle','triangle','diamond','oval','rectangle','square','semicircle']},
 ];
 
-/* ═══════════════════════════════════════════════════════════
-   STATE
-═══════════════════════════════════════════════════════════ */
 let G={
   coins:0,score:0,level:0,prog:{},diff:'easy',
   lives:5,wrongCount:0,timerVal:0,timerInt:null,
   placements:[],paused:false,audioOn:true,
-  dataLoaded:false,bestScore:0,
-  combo:0,
+  dataLoaded:false,bestScore:0,combo:0,
 };
 
-/* ═══════════════════════════════════════════════════════════
-   CANVAS & DOM
-═══════════════════════════════════════════════════════════ */
 const $=id=>document.getElementById(id);
 const canvas=$('gc'), ctx=canvas.getContext('2d');
 const trayEl=$('tray');
@@ -381,9 +371,7 @@ const cCanvas=$('cvc'), cCtx=cCanvas.getContext('2d');
 const SCREENS=['LS','SS','LVS','GS','SCR','WIN'];
 function showScreen(id){SCREENS.forEach(s=>$(s).classList.toggle('hidden',s!==id));}
 
-/* ═══════════════════════════════════════════════════════════
-   AUDIO
-═══════════════════════════════════════════════════════════ */
+/* ── AUDIO ── */
 let AC=null;
 function getAC(){if(!AC)try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}return AC;}
 function tone(f,t,d,v,dl){
@@ -406,17 +394,12 @@ const sfxCombo =()=>{tone(800,'sine',.08,.2);tone(1000,'sine',.08,.18,.07);tone(
 function sfxWin(){[523,659,784,1047].forEach((f,i)=>tone(f,'sine',.15,.15,i*.06));}
 function sfxVictory(){[523,587,659,698,784,880,988,1047].forEach((f,i)=>tone(f,'triangle',.18,.16,i*.05));}
 
-/* ═══════════════════════════════════════════════════════════
-   SPEECH
-═══════════════════════════════════════════════════════════ */
 function speak(txt){
   if(!window.speechSynthesis||!G.audioOn)return;
   try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(txt);u.rate=.9;u.pitch=1.2;u.volume=.8;speechSynthesis.speak(u);}catch(e){}
 }
 
-/* ═══════════════════════════════════════════════════════════
-   SHAPE DRAWING
-═══════════════════════════════════════════════════════════ */
+/* ── SHAPE DRAWING ── */
 function drawShape(c,sh,cx,cy,w,h,col,alpha,ghost){
   c.save();c.globalAlpha=alpha!==undefined?alpha:1;
   if(ghost){c.strokeStyle=col;c.lineWidth=3.5;c.setLineDash([7,5]);c.fillStyle=col+'16';}
@@ -449,43 +432,44 @@ function drawTile(cv,sh,col){
   const c=cv.getContext('2d'),s=cv.width;c.clearRect(0,0,s,s);drawShape(c,sh,s/2,s/2,s*.68,s*.68,col,1,false);
 }
 
-/* ═══════════════════════════════════════════════════════════
-   ✅ FIX 3: firstFrameReady called immediately — SDK is now
-   guaranteed loaded above, so this call is safe.
-═══════════════════════════════════════════════════════════ */
-window.ytgame.firstFrameReady();
+/* ── ✅ CORRECT v1 SDK HOOKS ── */
+// firstFrameReady: called immediately — loading screen is visible
+ytgame.game.firstFrameReady();
 
-window.ytgame.onPause(()=>{
+// Pause/resume — v1 API: ytgame.system.onPause / onResume
+ytgame.system.onPause(()=>{
   G.paused=true;$('PO').classList.add('show');
   if(G.timerInt){clearInterval(G.timerInt);G.timerInt=null;}
   if(speechSynthesis)speechSynthesis.cancel();
 });
-window.ytgame.onResume(()=>{
+ytgame.system.onResume(()=>{
   G.paused=false;$('PO').classList.remove('show');
   if(!$('GS').classList.contains('hidden')&&G.timerVal>0)startTimer();
 });
-window.ytgame.onAudioEnabledChange(en=>{
+
+// Audio — v1 API: ytgame.system.isAudioEnabled / onAudioEnabledChange
+ytgame.system.onAudioEnabledChange(en=>{
   G.audioOn=en;if(!en&&speechSynthesis)speechSynthesis.cancel();
 });
-G.audioOn=window.ytgame.isAudioEnabled();
+G.audioOn=ytgame.system.isAudioEnabled();
 
-/* ═══════════════════════════════════════════════════════════
-   CLOUD SAVE/LOAD
-═══════════════════════════════════════════════════════════ */
+/* ── CLOUD SAVE/LOAD (v1: string-based) ── */
 async function loadCloud(){
-  try{const d=await window.ytgame.loadData();
-    if(d&&typeof d==='object'){G.coins=d.coins||0;G.score=d.score||0;G.bestScore=d.bestScore||0;G.prog=d.prog||{};}
+  try{
+    const str=await ytgame.game.loadData();
+    if(str){const d=JSON.parse(str);
+      G.coins=d.coins||0;G.score=d.score||0;G.bestScore=d.bestScore||0;G.prog=d.prog||{};}
   }catch(e){}
   G.dataLoaded=true;$('cntxt').textContent=G.coins;
 }
 async function saveCloud(){
   if(!G.dataLoaded)return;
-  try{await window.ytgame.saveData({coins:G.coins,score:G.score,bestScore:G.bestScore,prog:G.prog});}catch(e){}
+  try{
+    await ytgame.game.saveData(JSON.stringify({coins:G.coins,score:G.score,bestScore:G.bestScore,prog:G.prog}));
+  }catch(e){}
 }
 
-/* ═══════════════════════════════════════════════════════════
-   BOOT — gameReady() called after loading completes
-═══════════════════════════════════════════════════════════ */
+/* ── BOOT ── */
 async function boot(){
   const bar=$('lbf'),tip=$('ltip');
   bar.style.width='20%';tip.textContent='Loading progress…';
@@ -495,13 +479,12 @@ async function boot(){
   bar.style.width='100%';tip.textContent='Ready!';
   await new Promise(r=>setTimeout(r,150));
   showScreen('SS');
-  window.ytgame.gameReady(); // ✅ Called AFTER firstFrameReady — correct order
+  // ✅ gameReady: called AFTER loading screen gone, start screen is interactive
+  ytgame.game.gameReady();
 }
 boot();
 
-/* ═══════════════════════════════════════════════════════════
-   LEVEL GRID
-═══════════════════════════════════════════════════════════ */
+/* ── LEVEL GRID ── */
 const DI=['😊','😤','🔥','💀'],DC2=['e','m','h','x'];
 function lvDI(i){return i<5?0:i<10?1:i<20?2:3;}
 function buildGrid(){
@@ -519,9 +502,7 @@ function buildGrid(){
   });
 }
 
-/* ═══════════════════════════════════════════════════════════
-   RESIZE
-═══════════════════════════════════════════════════════════ */
+/* ── RESIZE ── */
 function resizeCanvas(){
   const wrap=document.querySelector('.scene');if(!wrap)return;
   const r=wrap.getBoundingClientRect();
@@ -535,9 +516,7 @@ window.addEventListener('resize',()=>{
   cCanvas.width=window.innerWidth;cCanvas.height=window.innerHeight;
 });
 
-/* ═══════════════════════════════════════════════════════════
-   GAME START
-═══════════════════════════════════════════════════════════ */
+/* ── GAME ── */
 function startLevel(li){
   clearInterval(G.timerInt);G.timerInt=null;
   G.level=li;G.wrongCount=0;G.combo=0;
@@ -592,9 +571,7 @@ function updateHUD(){
   $('hlv2').textContent=ls;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   TRAY
-═══════════════════════════════════════════════════════════ */
+/* ── TRAY ── */
 function buildTray(lv,cfg){
   trayEl.innerHTML='';
   const needed={};lv.s.forEach(s=>needed[s.sh]=(needed[s.sh]||0)+1);
@@ -631,9 +608,7 @@ function refreshTray(){
   });
 }
 
-/* ═══════════════════════════════════════════════════════════
-   CANVAS RENDER
-═══════════════════════════════════════════════════════════ */
+/* ── CANVAS RENDER ── */
 function redraw(){
   if(!G.placements.length)return;
   const cs=canvas.width;if(!cs)return;
@@ -664,9 +639,7 @@ function redraw(){
   });
 }
 
-/* ═══════════════════════════════════════════════════════════
-   DRAG & DROP
-═══════════════════════════════════════════════════════════ */
+/* ── DRAG & DROP ── */
 let dragSh=null,dragTile=null;
 function pos(e){return e.touches&&e.touches.length?{x:e.touches[0].clientX,y:e.touches[0].clientY}:{x:e.clientX,y:e.clientY};}
 function moveGhost(x,y){ghostEl.style.left=x+'px';ghostEl.style.top=y+'px';}
@@ -719,7 +692,7 @@ function endDrag(e){
       if(G.combo>=cfg.comboNeeded){
         const comboIdx=Math.min(G.combo-cfg.comboNeeded,COMBO_MSG.length-1);
         showCombo(COMBO_MSG[comboIdx]);sfxCombo();
-        const bonus=G.combo*3;G.score+=bonus;addCoins(1);
+        G.score+=G.combo*3;addCoins(1);
       }else{
         showToast(PRAISE[Math.floor(Math.random()*PRAISE.length)],'#4ECDC4');
       }
@@ -727,10 +700,11 @@ function endDrag(e){
       canvas.classList.add('apu');setTimeout(()=>canvas.classList.remove('apu'),550);
       if(G.placements.every(p=>p.placed)){
         clearInterval(G.timerInt);G.timerInt=null;
-        const bonus=Math.round((G.timerVal||0)*1.4)+20+G.lives*5;
-        G.score+=bonus;addCoins(5+G.lives);
+        G.score+=Math.round((G.timerVal||0)*1.4)+20+G.lives*5;
+        addCoins(5+G.lives);
         if(G.score>G.bestScore)G.bestScore=G.score;
-        window.ytgame.sendScore(G.score);
+        // ✅ v1 sendScore: ytgame.engagement.sendScore({value: integer})
+        ytgame.engagement.sendScore({value:Math.floor(G.score)});
         G.prog[G.level]=Math.max(G.prog[G.level]||0, G.wrongCount===0?3:G.wrongCount<3?2:1);
         saveCloud();
         setTimeout(()=>{sfxWin();showSuccess();},560);
@@ -752,9 +726,7 @@ function endDrag(e){
 document.addEventListener('mouseup',endDrag);
 document.addEventListener('touchend',endDrag);
 
-/* ═══════════════════════════════════════════════════════════
-   TOAST & COMBO
-═══════════════════════════════════════════════════════════ */
+/* ── TOAST & COMBO ── */
 let toastT=null;
 function showToast(msg,col){
   const t=$('toast');t.textContent=msg;t.style.color=col||'#2D3748';
@@ -769,17 +741,11 @@ function showCombo(msg){
   clearTimeout(comboT);comboT=setTimeout(()=>{c.style.animation='none';},1200);
 }
 
-/* ═══════════════════════════════════════════════════════════
-   COINS
-═══════════════════════════════════════════════════════════ */
 function addCoins(n){
   G.coins+=n;$('cntxt').textContent=G.coins;sfxCoin();
   const cd=$('coins');cd.classList.remove('pop');void cd.offsetWidth;cd.classList.add('pop');
 }
 
-/* ═══════════════════════════════════════════════════════════
-   SUCCESS SCREEN
-═══════════════════════════════════════════════════════════ */
 function showSuccess(){
   const li=G.level,stars=G.wrongCount===0?3:G.wrongCount<3?2:1;
   let ss='';for(let i=0;i<3;i++)ss+=i<stars?'⭐':'☆';
@@ -787,8 +753,7 @@ function showSuccess(){
   $('sttl').textContent=LVS[li].e+' '+LVS[li].n+' Done!';
   $('ssub').textContent=`Combo: ${G.combo} | Mistakes: ${G.wrongCount} | Lives: ${G.lives}❤️`;
   $('sbdg').textContent='⭐ Score: '+G.score;
-  const cfg=DC[G.diff];
-  $('spen').textContent=cfg.pen>0?`(${cfg.tag}: -${cfg.pen}pts per wrong drop)`:'';
+  $('spen').textContent=DC[G.diff].pen>0?`(${DC[G.diff].tag}: -${DC[G.diff].pen}pts per wrong drop)`:'';
   launchConfetti();sfxVictory();speak('Amazing! Level complete!');
   if(li+1>=LVS.length){
     $('wsc').textContent='⭐ Final: '+G.score;$('wcn').textContent='🪙 '+G.coins;
@@ -796,9 +761,7 @@ function showSuccess(){
   }else showScreen('SCR');
 }
 
-/* ═══════════════════════════════════════════════════════════
-   CONFETTI
-═══════════════════════════════════════════════════════════ */
+/* ── CONFETTI ── */
 const CC=['#FF6B6B','#4ECDC4','#FFE66D','#A78BFA','#6EE7B7','#FCA549','#F472B6','#60A5FA'];
 const pcs=[];
 function launchConfetti(){
@@ -821,11 +784,8 @@ function animC(){
 }
 function clearC(){cCtx.clearRect(0,0,cCanvas.width,cCanvas.height);}
 
-/* ═══════════════════════════════════════════════════════════
-   BUTTON WIRING
-═══════════════════════════════════════════════════════════ */
+/* ── BUTTONS ── */
 function wire(id,fn){const el=$(id);if(el)el.addEventListener('click',fn);}
-
 document.querySelectorAll('.db').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.db').forEach(x=>x.classList.remove('active'));
   b.classList.add('active');G.diff=b.dataset.d;sfxClick();
